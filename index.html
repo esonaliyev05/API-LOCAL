@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Telefon orqali kirish</title>
+  <style>
+    body {
+      background: #f0f4f8;
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .container {
+      background: #ffffff;
+      padding: 30px 25px;
+      border-radius: 10px;
+      box-shadow: 0 5px 25px rgba(0, 0, 0, 0.1);
+      width: 320px;
+    }
+
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: #555;
+    }
+
+    input[type="text"],
+    input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      font-size: 15px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      outline: none;
+      transition: border-color 0.3s;
+    }
+
+    input:focus {
+      border-color: #007bff;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #007bff;
+      color: white;
+      font-size: 15px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    button:hover {
+      background: #0056b3;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Kirish (Telefon orqali)</h2>
+
+    <!-- Telefon kiritish formasi -->
+    <form id="phone-form">
+      <div class="form-group">
+        <label for="phone">Telefon raqamingiz:</label>
+        <input type="text" id="phone" placeholder="998901234567" required />
+      </div>
+      <button type="submit">Kodni yuborish</button>
+    </form>
+
+    <!-- OTP tasdiqlash formasi -->
+    <form id="otp-form" class="hidden">
+      <div class="form-group">
+        <label for="otp">Tasdiqlash kodi (OTP):</label>
+        <input type="number" id="otp" placeholder="1234" required />
+      </div>
+      <button type="submit">Tasdiqlash</button>
+    </form>
+  </div>
+
+  <script>
+    const phoneForm = document.getElementById('phone-form');
+    const otpForm = document.getElementById('otp-form');
+
+    phoneForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const phone = document.getElementById('phone').value;
+
+      const res = await fetch('http://localhost:3000/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone })
+      });
+
+      if (res.ok) {
+        alert('OTP yuborildi! Endi tasdiqlang.');
+        phoneForm.classList.add('hidden');
+        otpForm.classList.remove('hidden');
+      } else {
+        alert('Xatolik yuz berdi!');
+      }
+    });
+
+    otpForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const phone = document.getElementById('phone').value;
+      const otp = document.getElementById('otp').value;
+
+      const res = await fetch('http://localhost:3000/api/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, otp })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        alert('Kirish muvaffaqiyatli! Token: ' + data.token);
+      } else {
+        alert(data.message || 'Tasdiqlashda xatolik!');
+      }
+    });
+  </script>
+</body>
+</html>
