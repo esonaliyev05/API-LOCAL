@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Telefon orqali kirish</title>
+  <title>Telefon va Email orqali kirish</title>
   <style>
     body {
       background: #f0f4f8;
@@ -40,7 +40,8 @@
     }
 
     input[type="text"],
-    input[type="number"] {
+    input[type="number"],
+    input[type="email"] {
       width: 100%;
       padding: 10px;
       font-size: 15px;
@@ -77,13 +78,17 @@
 </head>
 <body>
   <div class="container">
-    <h2>Kirish (Telefon orqali)</h2>
+    <h2>Kirish (Telefon va Email orqali)</h2>
 
-    <!-- Telefon kiritish formasi -->
+    <!-- Telefon + Email kiritish formasi -->
     <form id="phone-form">
       <div class="form-group">
         <label for="phone">Telefon raqamingiz:</label>
         <input type="text" id="phone" placeholder="998901234567" required />
+      </div>
+      <div class="form-group">
+        <label for="email">Email manzilingiz:</label>
+        <input type="email" id="email" placeholder="you@gmail.com" required />
       </div>
       <button type="submit">Kodni yuborish</button>
     </form>
@@ -102,42 +107,48 @@
     const phoneForm = document.getElementById('phone-form');
     const otpForm = document.getElementById('otp-form');
 
+    let currentPhone = '';
+    let currentEmail = '';
+
     phoneForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const phone = document.getElementById('phone').value;
+      const email = document.getElementById('email').value;
 
       const res = await fetch('http://localhost:3000/api/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone })
+        body: JSON.stringify({ phone, email })
       });
 
       if (res.ok) {
-        alert('OTP yuborildi! Endi tasdiqlang.');
+        alert('✅ OTP yuborildi! Endi emaildan tasdiqlash havolasini tekshiring va kodni kiriting.');
+        currentPhone = phone;
+        currentEmail = email;
         phoneForm.classList.add('hidden');
         otpForm.classList.remove('hidden');
       } else {
-        alert('Xatolik yuz berdi!');
+        const data = await res.json();
+        alert(data.message || '❌ Xatolik yuz berdi!');
       }
     });
 
     otpForm.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const phone = document.getElementById('phone').value;
       const otp = document.getElementById('otp').value;
 
       const res = await fetch('http://localhost:3000/api/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, otp })
+        body: JSON.stringify({ phone: currentPhone, otp })
       });
 
       const data = await res.json();
 
       if (res.ok) {
-        alert('Kirish muvaffaqiyatli! Token: ' + data.token);
+        alert('✅ Kirish muvaffaqiyatli! Token:\n' + data.token);
       } else {
-        alert(data.message || 'Tasdiqlashda xatolik!');
+        alert(data.message || '❌ Tasdiqlashda xatolik!');
       }
     });
   </script>

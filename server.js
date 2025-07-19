@@ -5,8 +5,9 @@ const dotenv = require('dotenv');
 const bodyParser = require('body-parser');
 const path = require('path');
 const cors = require('cors');
+const nodemailer = require('nodemailer');
 
-// ⛔ Node.js 14/16 da fetch yo‘q — dynamic import ishlatiladi
+// Node 14/16 da fetch dynamic import orqali
 const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 dotenv.config();
@@ -14,16 +15,16 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors()); // ✅ Frontenddan so‘rovga ruxsat
+app.use(cors());
 app.use(bodyParser.json());
 
-// ✅ SQLite bazaga ulanish
+// SQLite ulanish
 const db = new sqlite3.Database(path.join(__dirname, 'otp-auth.db'), (err) => {
   if (err) return console.error('❌ SQLite xatosi:', err.message);
   console.log('✅ SQLite bazaga ulandi');
 });
 
-// ✅ OTP jadvalini yaratish
+// Jadval yaratish
 db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS otps (
@@ -35,7 +36,7 @@ db.serialize(() => {
   `);
 });
 
-// ✅ Telegram orqali OTP yuborish funksiyasi
+// Telegram OTP yuborish
 const sendOtpToTelegram = async (otp, phone) => {
   const chatId = process.env.TELEGRAM_CHAT_ID;
   const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -47,27 +48,57 @@ const sendOtpToTelegram = async (otp, phone) => {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: message,
-      }),
+      body: JSON.stringify({ chat_id: chatId, text: message }),
     });
 
     const data = await response.json();
     if (!data.ok) {
-      console.error('❌ Telegramga yuborishda xatolik:', data.description);
+      console.error('❌ Telegram xatosi:', data.description);
     } else {
       console.log('✅ OTP Telegramga yuborildi');
     }
   } catch (err) {
-    console.error('❌ Telegram so‘rovida xatolik:', err.message);
+    console.error('❌ Telegram fetch xatolik:', err.message);
   }
 };
 
-// ✅ OTP yuborish endpoint
+// Email yuborish
+const sendEmailConfirmation = async (email, phone, token) => {
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+
+  const confirmUrl = `${process.env.BASE_URL}/api/confirm-email?token=${token}`;
+
+  const mailOptions = {
+    from: `"MyCloud Auth" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: '📩 Telefon raqamingizni tasdiqlang',
+    html: `
+      <h3>Salom!</h3>
+      <p>Quyidagi havola orqali telefon raqamingizni tasdiqlang:</p>
+      <a href="${confirmUrl}">MY CLOUD UCHUN KIRISH token</a>
+      <br/>
+      <small>Agar bu siz bo'lmasangiz, bu xabarni e'tiborsiz qoldiring.</small>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log('✅ Tasdiqlash email yuborildi:', email);
+  } catch (error) {
+    console.error('❌ Email yuborishda xatolik:', error.message);
+  }
+};
+
+// OTP yuborish (phone + email)
 app.post('/api/send-otp', (req, res) => {
-  const { phone } = req.body;
-  if (!phone) return res.status(400).json({ message: 'Telefon raqam kerak' });
+  const { phone, email } = req.body;
+  if (!phone || !email) return res.status(400).json({ message: 'Telefon va email kerak' });
 
   const otp = Math.floor(1000 + Math.random() * 9000).toString();
 
@@ -75,13 +106,19 @@ app.post('/api/send-otp', (req, res) => {
     if (err) return res.status(500).json({ message: 'Bazaga yozishda xatolik' });
 
     console.log(`📲 OTP ${otp} yuborildi: ${phone}`);
-    await sendOtpToTelegram(otp, phone); // Telegramga yuborish
+    await sendOtpToTelegram(otp, phone);
 
-    return res.status(200).json({ message: 'OTP yuborildi' });
+    const token = jwt.sign({ phone, email }, process.env.JWT_SECRET, {
+      expiresIn: process.env.TOKEN_EXPIRES_IN || '1d',
+    });
+
+    await sendEmailConfirmation(email, phone, token);
+
+    return res.status(200).json({ message: 'OTP yuborildi va emailga tasdiqlash havolasi jo‘natildi' });
   });
 });
 
-// ✅ OTP tasdiqlash endpoint
+// OTP tekshirish
 app.post('/api/verify-otp', (req, res) => {
   const { phone, otp } = req.body;
   if (!phone || !otp) {
@@ -104,12 +141,29 @@ app.post('/api/verify-otp', (req, res) => {
 
       db.run(`DELETE FROM otps WHERE phone = ?`, [phone]);
 
-      return res.status(200).json({ message: 'Muvaffaqiyatli', token });
+      return res.status(200).json({ message: 'Tasdiqlandi', token });
     }
   );
 });
 
-// ✅ Serverni ishga tushirish
+// Email orqali tasdiqlash
+app.get('/api/confirm-email', (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).send('Token yo‘q');
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    res.send(`
+      <h2>✅ Tasdiqlash muvaffaqiyatli</h2>
+      <p>Telefon raqam: ${decoded.phone}</p>
+      <p>Email: ${decoded.email}</p>
+    `);
+  } catch (err) {
+    res.status(401).send('❌ Token noto‘g‘ri yoki muddati tugagan');
+  }
+});
+
+// Serverni ishga tushirish
 app.listen(PORT, () => {
   console.log(`🚀 Server ishga tushdi: http://localhost:${PORT}`);
 });
